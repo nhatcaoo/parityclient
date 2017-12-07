@@ -339,6 +339,13 @@ func (ec *Client) NewFilter(ctx context.Context, q ethereum.FilterQuery) (*big.I
 	return (*big.Int)(&result), err
 }
 
+// NewBlockFilter returns a filter query.
+func (ec *Client) NewBlockFilter(ctx context.Context) (*big.Int, error) {
+	var result hexutil.Big
+	err := ec.c.CallContext(ctx, &result, "eth_newBlockFilter")
+	return (*big.Int)(&result), err
+}
+
 // FilterChanges returns changes to a filter query.
 func (ec *Client) FilterChanges(ctx context.Context, filterID *big.Int) ([]types.Log, error) {
 	var result []types.Log
