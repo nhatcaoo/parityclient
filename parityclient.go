@@ -353,6 +353,13 @@ func (ec *Client) FilterChanges(ctx context.Context, filterID *big.Int) ([]types
 	return result, err
 }
 
+// BlockFilterChanges returns changes to a filter query.
+func (ec *Client) BlockFilterChanges(ctx context.Context, filterID *big.Int) ([]common.Hash, error) {
+	var result []common.Hash
+	err := ec.c.CallContext(ctx, &result, "eth_getFilterChanges", hexutil.EncodeBig(filterID))
+	return result, err
+}
+
 // SubscribeFilterLogs subscribes to the results of a streaming filter query.
 func (ec *Client) SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
 	return ec.c.EthSubscribe(ctx, ch, "logs", toFilterArg(q))
