@@ -463,7 +463,6 @@ func (ec *Client) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
 // the true gas limit requirement as other transactions may be added or removed by miners,
 // but it should provide a basis for setting a reasonable default.
 func (ec *Client) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (*big.Int, error) {
-	fmt.Println("estimate GAS")
 	var hex hexutil.Big
 	err := ec.c.CallContext(ctx, &hex, "eth_estimateGas", toCallArg(msg))
 	if err != nil {
