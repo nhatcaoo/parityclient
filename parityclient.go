@@ -22,6 +22,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"sync/atomic"
+	"time"
 
 	"context"
 
@@ -87,11 +89,12 @@ func (ec *Client) getBlock(ctx context.Context, method string, args ...interface
 		return nil, ethereum.NotFound
 	}
 	// Decode header and transactions.
-	var head *types.Header
+	var heady *Header
 	var body rpcBlock
-	if err := json.Unmarshal(raw, &head); err != nil {
+	if err := json.Unmarshal(raw, &heady); err != nil {
 		return nil, err
 	}
+	head := heady.Header()
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return nil, err
 	}
@@ -222,9 +225,69 @@ type Receipt struct {
 	Logs              []Log                `json:"logs"`
 	LogsBloom         string               `json:"logsBloom"`
 	Root              []byte               `json:"root"`
-	Status            uint                 `json:"status"`
+	Status            string               `json:"status"`
 	TransactionHash   common.Hash          `json:"transactionHash"`
 	TransactionIndex  math.HexOrDecimal256 `json:"transactionIndex"`
+}
+
+// Block me not
+type Block struct {
+	header       *Header
+	uncles       []*Header
+	transactions types.Transactions
+
+	// caches
+	hash atomic.Value
+	size atomic.Value
+
+	// Td is used by package core to store the total difficulty
+	// of the chain up to and including the block.
+	td *big.Int
+
+	// These fields are used by package eth to track
+	// inter-peer block relay.
+	ReceivedAt   time.Time
+	ReceivedFrom interface{}
+}
+
+// Header the class
+type Header struct {
+	ParentHash  common.Hash    `json:"parentHash"       gencodec:"required"`
+	UncleHash   common.Hash    `json:"sha3Uncles"       gencodec:"required"`
+	Coinbase    common.Address `json:"miner"            gencodec:"required"`
+	Root        common.Hash    `json:"stateRoot"        gencodec:"required"`
+	TxHash      common.Hash    `json:"transactionsRoot" gencodec:"required"`
+	ReceiptHash common.Hash    `json:"receiptsRoot"     gencodec:"required"`
+	Bloom       types.Bloom    `json:"logsBloom"        gencodec:"required"`
+	Difficulty  hexutil.Big    `json:"difficulty"       gencodec:"required"`
+	Number      hexutil.Big    `json:"number"           gencodec:"required"`
+	GasLimit    hexutil.Big    `json:"gasLimit"         gencodec:"required"`
+	GasUsed     hexutil.Big    `json:"gasUsed"          gencodec:"required"`
+	Time        hexutil.Big    `json:"timestamp"        gencodec:"required"`
+	Extra       string         `json:"extraData"        gencodec:"required"`
+	//MixDigest   common.Hash      `json:"mixHash"       gencodec:"required"`
+	Nonce types.BlockNonce `json:"nonce"            gencodec:"required"`
+}
+
+// Header way
+func (h *Header) Header() (hx *types.Header) {
+	hxx := types.Header{
+		ParentHash:  h.ParentHash,
+		UncleHash:   h.UncleHash,
+		Coinbase:    h.Coinbase,
+		Root:        h.Root,
+		TxHash:      h.TxHash,
+		ReceiptHash: h.ReceiptHash,
+		Bloom:       h.Bloom,
+		Difficulty:  h.Difficulty.ToInt(),
+		Number:      h.Number.ToInt(),
+		GasLimit:    h.GasLimit.ToInt().Uint64(),
+		GasUsed:     h.GasUsed.ToInt().Uint64(),
+		Time:        h.Time.ToInt(),
+		Extra:       common.Hex2Bytes(h.Extra),
+		Nonce:       h.Nonce,
+	}
+	return &hxx
 }
 
 var t types.Receipt
@@ -397,9 +460,7 @@ func (ec *Client) PendingStorageAt(ctx context.Context, account common.Address, 
 // PendingCodeAt returns the contract code of the given account in the pending state.
 func (ec *Client) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
 	var result hexutil.Bytes
-	fmt.Println("pca 1")
 	err := ec.c.CallContext(ctx, &result, "eth_getCode", account, "pending")
-	fmt.Println("pca 2")
 	return result, err
 }
 
@@ -462,13 +523,14 @@ func (ec *Client) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
 // the current pending state of the backend blockchain. There is no guarantee that this is
 // the true gas limit requirement as other transactions may be added or removed by miners,
 // but it should provide a basis for setting a reasonable default.
-func (ec *Client) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (*big.Int, error) {
+func (ec *Client) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
 	var hex hexutil.Big
 	err := ec.c.CallContext(ctx, &hex, "eth_estimateGas", toCallArg(msg))
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	return (*big.Int)(&hex), nil
+	bn := (*big.Int)(&hex)
+	return bn.Uint64(), nil
 }
 
 // SendTransaction injects a signed transaction into the pending pool for execution.
@@ -494,8 +556,8 @@ func toCallArg(msg ethereum.CallMsg) interface{} {
 	if msg.Value != nil {
 		arg["value"] = (*hexutil.Big)(msg.Value)
 	}
-	if msg.Gas != nil {
-		arg["gas"] = (*hexutil.Big)(msg.Gas)
+	if msg.Gas != 0 {
+		arg["gas"] = hexutil.Uint64(msg.Gas)
 	}
 	if msg.GasPrice != nil {
 		arg["gasPrice"] = (*hexutil.Big)(msg.GasPrice)
