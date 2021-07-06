@@ -283,7 +283,7 @@ func (h *Header) Header() (hx *types.Header) {
 		Number:      h.Number.ToInt(),
 		GasLimit:    h.GasLimit.ToInt().Uint64(),
 		GasUsed:     h.GasUsed.ToInt().Uint64(),
-		Time:        h.Time.ToInt(),
+		Time:        h.Time.ToInt().Uint64(),
 		Extra:       common.Hex2Bytes(h.Extra),
 		Nonce:       h.Nonce,
 	}
